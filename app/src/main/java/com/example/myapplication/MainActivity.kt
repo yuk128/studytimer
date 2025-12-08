@@ -55,7 +55,7 @@ fun StudyTimerApp() {
         ) {
             when (currentScreen) {
                 "timer" -> TimerScreen(onRecordAdd = { record ->
-                    studyRecords.add(record)    // ★ clear() 제거 → 누적 저장
+                    studyRecords.add(record)
                 })
                 "record" -> RecordScreen(records = studyRecords)
             }
@@ -70,17 +70,20 @@ fun TimerScreen(onRecordAdd: (String) -> Unit) {
 
     var focusHours by remember { mutableStateOf("0") }
     var focusMinutes by remember { mutableStateOf("0") }
-    var focusSeconds by remember { mutableStateOf("10") }
+    var focusSeconds by remember { mutableStateOf("0") }
 
     var restHours by remember { mutableStateOf("0") }
     var restMinutes by remember { mutableStateOf("0") }
-    var restSeconds by remember { mutableStateOf("10") }
+    var restSeconds by remember { mutableStateOf("0") }
 
     var remainingTime by remember { mutableStateOf(0) }
     var totalTime by remember { mutableStateOf(0) }
     var isRunning by remember { mutableStateOf(false) }
 
-    var usedRestTime by remember { mutableStateOf(0) }
+    // 반복 기능
+    var repeatCount by remember { mutableStateOf("0") }
+    var repeatRemaining by remember { mutableStateOf(0) }
+    var isRepeatMode by remember { mutableStateOf(false) }
 
     fun makeRecord(modeText: String, seconds: Int): String {
         val timeStr = formatTime(seconds)
@@ -88,65 +91,106 @@ fun TimerScreen(onRecordAdd: (String) -> Unit) {
         return "$modeText $timeStr 완료 - $timestamp"
     }
 
+    fun getFocusSeconds(): Int =
+        (focusHours.toIntOrNull() ?: 0) * 3600 +
+                (focusMinutes.toIntOrNull() ?: 0) * 60 +
+                (focusSeconds.toIntOrNull() ?: 0)
+
+    fun getRestSeconds(): Int =
+        (restHours.toIntOrNull() ?: 0) * 3600 +
+                (restMinutes.toIntOrNull() ?: 0) * 60 +
+                (restSeconds.toIntOrNull() ?: 0)
+
+    // 🔥 반복 = "라운드 1개" (집중 or 휴식 하나 끝날 때마다 반복 1 감소)
+    //     반복 2라면 → 집중2 + 휴식2 = 총 4라운드
     LaunchedEffect(isRunning) {
         while (isRunning) {
             delay(1000)
             remainingTime--
 
-            if (!isFocusMode) usedRestTime++
-
             if (remainingTime <= 0) {
-                isRunning = false
+
+                // 기록 저장
                 val modeText = if (isFocusMode) "집중" else "휴식"
                 onRecordAdd(makeRecord(modeText, totalTime))
+
+                if (isRepeatMode) {
+
+                    // 🔥 라운드 1개 종료 → repeatRemaining 1 감소
+                    repeatRemaining--
+
+                    if (repeatRemaining > 0) {
+                        // 다음 라운드로 모드 전환
+                        isFocusMode = !isFocusMode
+                        totalTime = if (isFocusMode) getFocusSeconds() else getRestSeconds()
+                        remainingTime = totalTime
+                    } else {
+                        // 반복 끝
+                        isRunning = false
+                        isRepeatMode = false
+                    }
+
+                } else {
+                    // 일반 모드 종료
+                    isRunning = false
+                }
             }
         }
     }
 
-    fun getFocusSeconds() =
-        (focusHours.toIntOrNull() ?: 0) * 3600 +
-                (focusMinutes.toIntOrNull() ?: 0) * 60 +
-                (focusSeconds.toIntOrNull() ?: 0)
-
-    fun getRestSeconds() =
-        (restHours.toIntOrNull() ?: 0) * 3600 +
-                (restMinutes.toIntOrNull() ?: 0) * 60 +
-                (restSeconds.toIntOrNull() ?: 0)
-
     val progress = if (totalTime > 0) remainingTime.toFloat() / totalTime else 0f
+    val circleSize = 420.dp
 
-    Box(
+    Column(
         modifier = Modifier.fillMaxSize().background(Color.White),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        val circleSize = 420.dp
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.size(circleSize)
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+        ) {
+            Button(
+                onClick = { isFocusMode = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isFocusMode) Color(0xFF1976D2) else Color.LightGray
+                )
+            ) { Text("집중") }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Button(
+                onClick = { isFocusMode = false },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (!isFocusMode) Color(0xFF388E3C) else Color.LightGray
+                )
+            ) { Text("휴식") }
+        }
+
+        Box(
+            modifier = Modifier.size(circleSize),
+            contentAlignment = Alignment.Center
         ) {
             CircularTimer(
                 progress = progress,
                 color = if (isFocusMode) Color(0xFF2196F3) else Color(0xFF4CAF50),
                 sizeDp = circleSize
             )
-        }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.align(Alignment.Center)
-        ) {
-            if (isRunning || remainingTime > 0) {
-                Text(text = formatTime(remainingTime), fontSize = 36.sp)
-            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
 
-            if (!isRunning) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (isRunning || remainingTime > 0) {
+                    Text(formatTime(remainingTime), fontSize = 36.sp)
+                } else {
                     Text(if (isFocusMode) "집중 시간 입력" else "휴식 시간 입력")
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
                         val h = if (isFocusMode) focusHours else restHours
                         val m = if (isFocusMode) focusMinutes else restMinutes
                         val s = if (isFocusMode) focusSeconds else restSeconds
@@ -157,68 +201,88 @@ fun TimerScreen(onRecordAdd: (String) -> Unit) {
 
                         TextField(
                             value = h,
-                            onValueChange = { updateHours(it.filter { c -> c.isDigit() }) },
+                            onValueChange = { updateHours(it.filter(Char::isDigit)) },
                             label = { Text("시") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(74.dp)
+                            modifier = Modifier.width(70.dp)
                         )
+
                         TextField(
                             value = m,
-                            onValueChange = { updateMinutes(it.filter { c -> c.isDigit() }) },
+                            onValueChange = { updateMinutes(it.filter(Char::isDigit)) },
                             label = { Text("분") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(74.dp)
+                            modifier = Modifier.width(70.dp)
                         )
+
                         TextField(
                             value = s,
-                            onValueChange = { updateSeconds(it.filter { c -> c.isDigit() }) },
+                            onValueChange = { updateSeconds(it.filter(Char::isDigit)) },
                             label = { Text("초") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(74.dp)
+                            modifier = Modifier.width(70.dp)
                         )
                     }
                 }
             }
+        }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = {
-                    isFocusMode = true
-                    if (remainingTime == 0) {
-                        totalTime = getFocusSeconds()
-                        remainingTime = totalTime
-                    }
-                    usedRestTime = 0
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("반복 수:")
+            Spacer(modifier = Modifier.width(8.dp))
+            TextField(
+                value = repeatCount,
+                onValueChange = { repeatCount = it.filter(Char::isDigit) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.width(80.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+
+            Button(onClick = {
+                if (!isRunning) {
+                    totalTime = if (isFocusMode) getFocusSeconds() else getRestSeconds()
+                    remainingTime = totalTime
+                }
+                isRepeatMode = false
+                isRunning = true
+            }) { Text("시작") }
+
+            Button(onClick = {
+                if (remainingTime < totalTime && remainingTime > 0) {
+                    val modeText = if (isFocusMode) "집중" else "휴식"
+                    val elapsed = totalTime - remainingTime
+                    onRecordAdd(makeRecord(modeText, elapsed))
+                }
+                isRunning = false
+                isRepeatMode = false
+            }) { Text("중단") }
+
+            // 🔥 반복 시작: 라운드 = 반복 수 * 2 (집중 + 휴식)
+            Button(onClick = {
+                val r = (repeatCount.toIntOrNull() ?: 0)
+                if (r > 0) {
+                    repeatRemaining = r * 2
+                    isRepeatMode = true
+
+                    totalTime = if (isFocusMode) getFocusSeconds() else getRestSeconds()
+                    remainingTime = totalTime
                     isRunning = true
-                }) { Text("집중 시작") }
+                }
+            }) { Text("반복") }
 
-                Button(onClick = {
-                    isFocusMode = false
-                    if (remainingTime == 0) {
-                        totalTime = getRestSeconds()
-                        remainingTime = totalTime
-                    }
-                    usedRestTime = 0
-                    isRunning = true
-                }) { Text("휴식 시작") }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = {
-                    if (remainingTime < totalTime && remainingTime > 0) {
-                        val modeText = if (isFocusMode) "집중" else "휴식"
-                        val elapsed = totalTime - remainingTime
-                        onRecordAdd(makeRecord(modeText, elapsed))
-                    }
-                    isRunning = false
-                }) { Text("중단") }
-
-                Button(onClick = {
-                    isRunning = false
-                    remainingTime = 0
-                    totalTime = 0
-                    usedRestTime = 0
-                }) { Text("리셋") }
-            }
+            Button(onClick = {
+                isRunning = false
+                remainingTime = 0
+                totalTime = 0
+                repeatRemaining = 0
+                isRepeatMode = false
+            }) { Text("리셋") }
         }
     }
 }
