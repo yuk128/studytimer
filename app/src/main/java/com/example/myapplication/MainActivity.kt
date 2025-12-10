@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
 
 
 // -------------------------------
@@ -50,6 +52,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+data class StudyRecord(
+    var title: String = "집중시간",
+    val elapsedSeconds: Int,
+    val timestamp: String
+)
+
+
 
 // ------------------------------------------------------------
 // StudyTimerApp: 타이머 관련 모든 상태를 호이스팅(상위로 올림)
@@ -83,8 +93,8 @@ fun StudyTimerApp() {
     var repeatRemaining by remember { mutableStateOf(0) } // 내부 카운트(집중/휴식 토글 단위)
     var isRepeatMode by remember { mutableStateOf(false) }
 
-    // 공부 기록 리스트
-    val studyRecords = remember { mutableStateListOf<String>() }
+    // 기존: val studyRecords = remember { mutableStateListOf<String>() }
+    val studyRecords = remember { mutableStateListOf<StudyRecord>() }
 
     // 보조: 입력값을 초로 변환하는 함수들
     fun getFocusSeconds(): Int =
@@ -98,11 +108,16 @@ fun StudyTimerApp() {
                 (restSeconds.toIntOrNull() ?: 0)
 
     // 기록 문자열 생성 (formatTime 보조 함수는 파일 하단에 있음)
-    fun makeRecord(modeText: String, seconds: Int): String {
-        val timeStr = formatTime(seconds)
+    // 기존 fun makeRecord(...) 대신 이 함수를 넣으세요
+    fun makeRecord(modeText: String, seconds: Int): StudyRecord {
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-        return "$modeText $timeStr 완료 - $timestamp"
+        return StudyRecord(
+            title = modeText,         // 기본 제목은 modeText (예: "집중")
+            elapsedSeconds = seconds, // 초 단위 경과 시간
+            timestamp = timestamp
+        )
     }
+
 
     // ========== 타이머 동작: 화면과 무관하게 동작하도록 여기에서 처리 ==========
     LaunchedEffect(isRunning) {
@@ -257,8 +272,14 @@ fun StudyTimerApp() {
                 "record" -> {
                     RecordScreen(
                         records = studyRecords,
-                        onBack = { currentScreen = "timer" } // ← 추가된 부분: 뒤로가기 콜백
+                        onBack = { currentScreen = "timer" },
+                        onRecordUpdate = { idx, newTitle ->
+                            // mutableStateListOf이므로 대입으로 업데이트 (recompose 발생)
+                            studyRecords[idx] = studyRecords[idx].copy(title = newTitle)
+                        }
                     )
+
+
                 }
 
             }
@@ -308,7 +329,7 @@ fun TimerScreen(
     remainingTime: Int,
     totalTime: Int,
     isRunning: Boolean,
-    setRemainingTime: (Int) -> Unit, // 필요시 UI에서 직접 사용 안해도 일관성을 위해 전달
+    setRemainingTime: (Int) -> Unit,
     setTotalTime: (Int) -> Unit,
     setRunning: (Boolean) -> Unit,
 
@@ -327,8 +348,9 @@ fun TimerScreen(
     onRequestReset: () -> Unit,
 
     // 기록 추가 (상위 리스트에 직접 추가할 수 있게)
-    onRecordAdd: (String) -> Unit
-) {
+    onRecordAdd: (StudyRecord) -> Unit
+)
+ {
     // 진행률 계산 (0..1)
     val progress = if (totalTime > 0) remainingTime.toFloat() / totalTime else 0f
     val circleSize = 420.dp
@@ -554,29 +576,75 @@ fun CircularTimer(
 // RecordScreen 컴포저블 정의 (수정된 시그니처와 버튼 동작)
 @Composable
 fun RecordScreen(
-    records: List<String>,
-    onBack: () -> Unit
+    records: List<StudyRecord>,
+    onBack: () -> Unit,
+    onRecordUpdate: (index: Int, newTitle: String) -> Unit
 ) {
+    var editingIndex by remember { mutableStateOf<Int?>(null) }
+    var editingTitle by remember { mutableStateOf("") }
+
+    // 총 시간 계산 (초 → 포맷)
+    val totalSeconds = records.sumOf { it.elapsedSeconds }
+    val totalTimeStr = formatTime(totalSeconds)
+
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Top
     ) {
         Text("기록", fontSize = 28.sp)
-
         Spacer(modifier = Modifier.height(20.dp))
 
-
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        LazyColumn {
-            itemsIndexed(records) { index, item ->
-                Text("${index + 1}. $item", fontSize = 20.sp)
-                Spacer(modifier = Modifier.height(12.dp))
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            itemsIndexed(records) { index, record ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .clickable {
+                            editingIndex = index
+                            editingTitle = record.title
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("${index + 1}. ${record.title}", fontSize = 18.sp)
+                        Text("${formatTime(record.elapsedSeconds)} · ${record.timestamp}", fontSize = 12.sp)
+                    }
+                }
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("총 시간: $totalTimeStr", fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (editingIndex != null) {
+        AlertDialog(
+            onDismissRequest = { editingIndex = null },
+            title = { Text("기록 제목 수정") },
+            text = {
+                TextField(
+                    value = editingTitle,
+                    onValueChange = { editingTitle = it },
+                    label = { Text("제목") }
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    editingIndex?.let { idx ->
+                        onRecordUpdate(idx, editingTitle)
+                    }
+                    editingIndex = null
+                }) { Text("저장") }
+            },
+            dismissButton = {
+                Button(onClick = { editingIndex = null }) { Text("취소") }
+            }
+        )
     }
 }
+
 
 
 // ------------------------------------------------------------
