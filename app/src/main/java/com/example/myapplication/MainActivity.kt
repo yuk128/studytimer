@@ -599,7 +599,7 @@ fun RecordScreen(
     records: List<StudyRecord>,
     onBack: () -> Unit,
     onRecordUpdate: (index: Int, newTitle: String) -> Unit,
-    onRecordDelete: (index: Int) -> Unit   // ✅ 추가
+    onRecordDelete: (index: Int) -> Unit
 )
  {
     var editingIndex by remember { mutableStateOf<Int?>(null) }
