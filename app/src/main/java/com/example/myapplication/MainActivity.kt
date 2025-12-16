@@ -126,48 +126,39 @@ fun StudyTimerApp() {
 
 
     LaunchedEffect(isRunning) {
-        // 이 루프는 isRunning이 true일 때만 동작
         while (isRunning) {
             delay(1000L)
-            // 안전하게 0 밑으로 내려가는 것을 방지
             if (remainingTime > 0) {
                 remainingTime--
             } else {
-                // remainingTime이 0 이하가 된 시점: 사이클 종료 처리
-                // 집중 모드였으면 기록 추가
                 if (isFocusMode) {
-                    // totalTime이 0이면 elapsed 계산이 이상하므로 안전 체크
                     val elapsed = if (totalTime > 0) totalTime else getFocusSeconds()
                     studyRecords.add(makeRecord("집중", elapsed))
                 }
 
                 if (isRepeatMode) {
-                    // 반복 모드에서는 repeatRemaining을 감소시키고 토글
                     repeatRemaining--
 
                     if (repeatRemaining > 0) {
-                        // 토글 (집중 <-> 휴식)
                         isFocusMode = !isFocusMode
                         totalTime = if (isFocusMode) getFocusSeconds() else getRestSeconds()
                         remainingTime = totalTime
-                        // 계속 isRunning == true 이므로 루프 지속
+
                     } else {
-                        // 반복 끝
+
                         isRunning = false
                         isRepeatMode = false
                     }
                 } else {
-                    // 반복 모드가 아니면 단일 사이클 종료 -> 멈춤
+
                     isRunning = false
                 }
             }
         }
     }
 
-    // ========== UI (버튼으로 화면 전환) ==========
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // 화면 컨텐츠: 하단 버튼을 위해 남는 공간만 차지하도록 weight 사용
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -264,7 +255,6 @@ fun StudyTimerApp() {
             }
         }
 
-        // 하단 네비게이션 바 (텍스트 버튼 → 이후 아이콘으로 바꾸기 쉬움)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -303,10 +293,6 @@ fun StudyTimerApp() {
     }
 }
 
-// -------------------------------
-// 보조 함수: 초를 HH:MM:SS로 포맷
-// (Timer/기록 양쪽에서 공용으로 사용)
-// -------------------------------
 fun formatTime(totalSeconds: Int): String {
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
@@ -314,18 +300,11 @@ fun formatTime(totalSeconds: Int): String {
     return String.format("%02d:%02d:%02d", hours, minutes, seconds)
 }
 
-
-// ------------------------------------------------------------
-// TimerScreen: UI만 담당하도록 리팩토링된 컴포저블
-// ------------------------------------------------------------
-// (매개변수는 StudyTimerApp에서 전달하는 상태 / setter / 콜백과 정확히 일치해야 합니다.)
 @Composable
 fun TimerScreen(
-    // 모드(집중/휴식)
     isFocusMode: Boolean,
     onFocusModeChange: (Boolean) -> Unit,
 
-    // 집중 시간 입력 (문자열)
     focusHours: String,
     onFocusHoursChange: (String) -> Unit,
     focusMinutes: String,
@@ -333,7 +312,6 @@ fun TimerScreen(
     focusSeconds: String,
     onFocusSecondsChange: (String) -> Unit,
 
-    // 휴식 시간 입력 (문자열)
     restHours: String,
     onRestHoursChange: (String) -> Unit,
     restMinutes: String,
@@ -341,7 +319,6 @@ fun TimerScreen(
     restSeconds: String,
     onRestSecondsChange: (String) -> Unit,
 
-    // 실행/시간 상태 (상위에서 관리)
     remainingTime: Int,
     totalTime: Int,
     isRunning: Boolean,
@@ -349,7 +326,6 @@ fun TimerScreen(
     setTotalTime: (Int) -> Unit,
     setRunning: (Boolean) -> Unit,
 
-    // 반복 관련
     repeatCount: String,
     onRepeatCountChange: (String) -> Unit,
     repeatRemaining: Int,
@@ -357,23 +333,18 @@ fun TimerScreen(
     isRepeatMode: Boolean,
     setRepeatMode: (Boolean) -> Unit,
 
-    // 액션 콜백 (상위에서 실제 로직 처리)
     onRequestStart: () -> Unit,
     onRequestStop: () -> Unit,
     onRequestRepeat: () -> Unit,
     onRequestReset: () -> Unit,
 
-    // 기록 추가 (상위 리스트에 직접 추가할 수 있게)
     onRecordAdd: (StudyRecord) -> Unit
 )
 {
-    // 진행률 계산 (0..1)
     val progress = if (totalTime > 0) remainingTime.toFloat() / totalTime else 0f
     val circleSize = 420.dp
-// ⬇⬇⬇ 여기 추가
     val lifecycleOwner = LocalLifecycleOwner.current
 
-// 최신 상태 안전하게 참조
     val currentIsRunning by rememberUpdatedState(isRunning)
     val currentRemaining by rememberUpdatedState(remainingTime)
     var wasRunningBeforePause by remember { mutableStateOf(false) }
@@ -383,14 +354,11 @@ fun TimerScreen(
             when (event) {
 
                 Lifecycle.Event.ON_PAUSE -> {
-                    // 화면 벗어날 때 자동 중단(기록은 남기지 않음)
                     wasRunningBeforePause = currentIsRunning
                     setRunning(false)
                 }
 
                 Lifecycle.Event.ON_RESUME -> {
-                    // 화면 복귀 시 자동 재생 금지 → 의도적으로 아무것도 하지 않음
-                    // (setRunning(true) 절대 금지)
                 }
 
                 else -> {}
@@ -413,8 +381,6 @@ fun TimerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // 모드 선택 버튼 (집중 / 휴식)
-        // 현재 모드 표시 아이콘 (눌리지 않는 표시용)
 
         if (remainingTime > 0 || isRunning) {
             Row(
@@ -434,12 +400,11 @@ fun TimerScreen(
             }
         }
 
-        // 원형 타이머 + 내부 UI
         Box(
             modifier = Modifier.size(circleSize),
             contentAlignment = Alignment.Center
         ) {
-            // CircularTimer는 3번째 조각에서 구현됩니다.
+
             CircularTimer(
                 progress = progress,
                 color = if (isFocusMode) Color(0xFF2196F3) else Color(0xFF4CAF50),
@@ -449,18 +414,12 @@ fun TimerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-// 타이머가 한 번이라도 시작된 상태일 때만 모드 아이콘 표시
 
 
                 if (isRunning || remainingTime > 0) {
-                    // 타이머 실행 중 화면
                     Text(formatTime(remainingTime), fontSize = 36.sp)
                 } else {
-                    // ----------------------------
-                    //  집중 + 휴식 입력을 모두 보여주는 화면
-                    // ----------------------------
 
-                    // ★ 집중시간 입력
                     Text("집중시간", fontSize = 22.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextField(
@@ -490,7 +449,6 @@ fun TimerScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // ★ 휴식시간 입력
                     Text("휴식시간", fontSize = 22.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextField(
@@ -564,8 +522,6 @@ fun TimerScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // 제어 버튼들 (시작 / 중단 / 반복 / 리셋)
-
     }
 }
 
@@ -592,14 +548,11 @@ fun SquareButton(
     }
 }
 
-// ------------------------------------------------------------
-//  원형 타이머 UI — TimerScreen 내부에서 사용
-// ------------------------------------------------------------
 @Composable
 fun CircularTimer(
     progress: Float,
     color: Color,
-    sizeDp: Dp = 100.dp,      // ⭐ 이 줄이 반드시 있어야 함
+    sizeDp: Dp = 100.dp,
     strokeWidth: Dp = 10.dp
 ) {
     Canvas(modifier = Modifier.size(sizeDp)) {
@@ -607,7 +560,6 @@ fun CircularTimer(
         val sweep = 360 * progress
         val halfStroke = strokeWidth.toPx() / 2
 
-        // 배경 원
         drawArc(
             color = Color.LightGray.copy(alpha = 0.4f),
             startAngle = -90f,
@@ -624,7 +576,6 @@ fun CircularTimer(
             )
         )
 
-        // 진행률 원
         drawArc(
             color = color,
             startAngle = -90f,
@@ -656,7 +607,6 @@ fun RecordScreen(
      var deleteIndex by remember { mutableStateOf<Int?>(null) }
 
 
-     // 총 시간 계산 (초 → 포맷)
     val totalSeconds = records.sumOf { it.elapsedSeconds }
     val totalTimeStr = formatTime(totalSeconds)
 
@@ -780,7 +730,6 @@ fun ProfileScreen() {
 
         var newTodoText by remember { mutableStateOf("") }
 
-        // 1️⃣ 프로필 영역
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -792,7 +741,6 @@ fun ProfileScreen() {
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-                // 📸 프로필 사진
                 Image(
                     painter = painterResource(id = R.drawable.plofil),
                     contentDescription = "프로필 사진",
@@ -801,7 +749,6 @@ fun ProfileScreen() {
                         .clip(RoundedCornerShape(36.dp))
                 )
 
-                // 👤 이름 + 날짜
                 Column(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -826,8 +773,6 @@ fun ProfileScreen() {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 2️⃣ 다짐 한 줄 영역
-        // 2️⃣ 다짐 한 줄 영역
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -840,7 +785,6 @@ fun ProfileScreen() {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 3️⃣ Todo 리스트 영역 (화면 절반)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -851,7 +795,6 @@ fun ProfileScreen() {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 입력창
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -882,8 +825,6 @@ fun ProfileScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 리스트
-            // 리스트 (스크롤 가능)
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -970,17 +911,14 @@ fun ProfileScreen() {
         var showEditDialog by remember { mutableStateOf(false) }
 
 
-        // ✅ 한글 입력 완전 대응
         var editingText by rememberSaveable(
             stateSaver = TextFieldValue.Saver
         ) {
             mutableStateOf(TextFieldValue(""))
         }
 
-        // ⭐ 핵심: 포커스 강제 요청용
         val focusRequester = remember { FocusRequester() }
 
-        // 📦 메인 박스
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1028,7 +966,6 @@ fun ProfileScreen() {
 
         if (showEditDialog) {
 
-            // ⭐ 다이얼로그가 뜨는 순간 포커스 요청
             LaunchedEffect(showEditDialog) {
                 focusRequester.requestFocus()
             }
